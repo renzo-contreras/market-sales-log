@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <script>
+    // Apply the saved appearance before the page draws, so there is no flash. Dark is the default.
+    try {
+      var t = localStorage.getItem('msl.theme');
+      if (t === 'light' || t === 'system' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in</title>
+  <meta name="theme-color" content="#1d1d1b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Market Sales">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Sign in -->
+  <section id="login" class="login" hidden>
+    <!-- Deliberately anonymous: no name or hint about what is behind the password. -->
+    <form id="login-form" class="login-card" autocomplete="on">
+      <div class="pw-wrap">
+        <input id="login-password" type="password" name="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+        <button type="button" id="login-show" class="pw-eye" aria-label="Show password" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+      </div>
+      <p id="login-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary btn-lg" id="login-submit">Enter</button>
+    </form>
+    <!-- Step 2: captcha, shown right after the password on every sign in. -->
+    <div id="captcha-step" class="login-card captcha-step" hidden>
+      <div id="captcha-box" class="captcha-box"></div>
+      <p id="captcha-status" class="muted captcha-status" role="status"></p>
+      <button type="button" class="btn btn-lg" id="captcha-back">Back</button>
+    </div>
+  </section>
+
+  <!-- App -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <h1 class="brand">Market Sales</h1>
+      <button id="sync" class="sync" data-action="retry" type="button" aria-live="polite">
+        <span class="dot"></span><span class="sync-text">Saved</span>
+      </button>
+      <button id="fs-btn" class="icon-btn fs-btn" data-action="fullscreen" type="button" aria-label="Full screen" hidden>
+        <svg class="fs-enter" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="fs-exit" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" data-action="menu" type="button" aria-label="Menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav class="tabbar" aria-label="Sections">
+      <button data-tab="sell" type="button">Sell</button>
+      <button data-tab="sales" type="button">Sales</button>
+      <button data-tab="totals" type="button">Totals</button>
+      <button data-tab="products" type="button">Products</button>
+    </nav>
+  </div>
+
+  <div id="modal" class="modal" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  <div id="report" class="report"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
