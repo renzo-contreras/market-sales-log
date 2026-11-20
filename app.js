@@ -800,7 +800,7 @@
   }
 
   function productRowHtml(p, sold) {
-    var stock = p.stock == null ? '' : ' · <span class="' + (p.stock - sold <= 0 ? 'stock-out' : '') + '">' + (p.stock - sold) + ' left of ' + p.stock + '</span>';
+    var stock = p.stock == null ? ' · <span class="stock-out">Stock missing, tap Edit</span>' : ' · <span class="' + (p.stock - sold <= 0 ? 'stock-out' : '') + '">' + (p.stock - sold) + ' left of ' + p.stock + '</span>';
     return '<div class="prow' + (p.active ? '' : ' hidden-p') + '"><div><div><strong>' + esc(p.name) + '</strong></div>' +
       '<div class="p-meta num">' + money(p.price) + ' · ' + sold + ' sold' + stock + (p.active ? '' : ' · ' + esc(p.category)) + '</div></div>' +
       '<button class="btn" data-action="edit-product" data-id="' + esc(p.id) + '">Edit</button>' +
@@ -816,7 +816,7 @@
         '<label class="field"><span>Category</span><input name="category" list="cat-list" value="' + esc(p ? p.category : (cats[0] || '')) + '" placeholder="Prints, Stickers..."></label>' +
         '<datalist id="cat-list">' + cats.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>' +
         '<label class="field"><span>Price ($)</span><input name="price" inputmode="decimal" required value="' + (p ? (p.price / 100).toFixed(2) : '') + '"></label>' +
-        '<label class="field"><span>Stock (how many you bring, optional)</span><input name="stock" inputmode="numeric" value="' + (p && p.stock != null ? p.stock : '') + '" placeholder="Leave blank to not track"></label>' +
+        '<label class="field"><span>Stock (how many you bring)</span><input name="stock" inputmode="numeric" required value="' + (p && p.stock != null ? p.stock : '') + '" placeholder="For example, 20"></label>' +
         '<p class="muted" style="margin:-6px 0 14px;font-size:14px">Items sold and items left are counted from your sales. Cancelled sales put items back.</p>' +
         '<p class="error" id="form-error" hidden></p>' +
         '<div class="actions"><button type="button" class="btn" data-action="close">Cancel</button>' +
@@ -832,8 +832,8 @@
       if (!form.name.value.trim()) { err.textContent = 'Add a name.'; err.hidden = false; return; }
       if (isNaN(price) || price < 0) { err.textContent = 'Price must be a number, like 25 or 12.50.'; err.hidden = false; return; }
       var stockRaw = form.stock.value.trim();
-      var stock = stockRaw === '' ? '' : Number(stockRaw);
-      if (stock !== '' && (!Number.isInteger(stock) || stock < 0)) { err.textContent = 'Stock must be a whole number, like 20. Or leave it blank.'; err.hidden = false; return; }
+      var stock = Number(stockRaw);
+      if (stockRaw === '' || !Number.isInteger(stock) || stock < 0) { err.textContent = 'Add the stock: how many you bring, as a whole number like 20.'; err.hidden = false; return; }
       var data = { id: p ? p.id : newId('P'), name: form.name.value.trim(), category: form.category.value.trim() || 'Other', price: price / 100, active: p ? p.active : true, stock: stock };
       saveProductNow(data, form.querySelector('[type=submit]'));
     });
@@ -856,7 +856,7 @@
     });
   }
 
-  /* Import: one product per line ("Name, Category, Price" or "Name, Price"), or a CSV with a header row. */
+  /* Import: one product per line ("Name, Category, Price, Stock"), or a CSV with a header row. Stock is required. */
   function parseCsvLine(line) {
     var out = [], cur = '', q = false;
     for (var i = 0; i < line.length; i++) {
@@ -888,22 +888,18 @@
       var name, category, price, stock;
       if (cols) {
         name = f[cols.name]; category = cols.category >= 0 ? f[cols.category] : ''; price = f[cols.price];
-        if (cols.stock >= 0) stock = f[cols.stock] || '';
+        stock = cols.stock >= 0 ? (f[cols.stock] || '') : '';
       } else if (f.length >= 4) {
         name = f[0]; category = f[1]; price = f[2]; stock = f[3];
-      } else if (f.length === 3) {
-        name = f[0]; category = f[1]; price = f[2];
-      } else if (f.length === 2) {
-        name = f[0]; category = ''; price = f[1];
       } else {
-        result.errors.push('Line ' + (i + 1) + ': needs a name and a price'); return;
+        result.errors.push('Line ' + (i + 1) + ': needs Name, Category, Price, Stock in "' + line + '"'); return;
       }
       var cents = toCents(price);
       if (!name || isNaN(cents)) { result.errors.push('Line ' + (i + 1) + ': could not read "' + line + '"'); return; }
-      if (stock !== undefined && stock !== '' && (!/^\d+$/.test(stock))) { result.errors.push('Line ' + (i + 1) + ': stock must be a whole number in "' + line + '"'); return; }
+      if (!/^\d+$/.test(stock)) { result.errors.push('Line ' + (i + 1) + ': stock is missing or not a whole number in "' + line + '"'); return; }
       var existing = state.products.find(function (p) { return p.name.toLowerCase() === name.toLowerCase(); });
       var item = { id: existing ? existing.id : newId('P'), name: name, category: category || 'Other', price: cents / 100, active: true, _update: !!existing };
-      if (stock !== undefined) item.stock = stock === '' ? '' : Number(stock); // left out = keep the current stock
+      item.stock = Number(stock);
       result.products.push(item);
     });
     return result;
@@ -912,8 +908,8 @@
   function importForm() {
     openModal(
       '<h2>Import products</h2>' +
-      '<p class="muted">Paste one product per line: <strong>Name, Category, Price, Stock</strong>. Stock is optional. A CSV with a header row (name, category, price, stock) also works. Products with the same name are updated, not duplicated.</p>' +
-      '<label class="field"><span>Paste here</span><textarea id="import-text" placeholder="Sticker pack, Stickers, 8, 40&#10;Large print, Prints, 40, 12&#10;Tote bag, Merch, 25"></textarea></label>' +
+      '<p class="muted">Paste one product per line: <strong>Name, Category, Price, Stock</strong>. Stock is required. A CSV with a header row (name, category, price, stock) also works. Products with the same name are updated, not duplicated.</p>' +
+      '<label class="field"><span>Paste here</span><textarea id="import-text" placeholder="Sticker pack, Stickers, 8, 40&#10;Large print, Prints, 40, 12&#10;Tote bag, Merch, 25, 15"></textarea></label>' +
       '<label class="field"><span>Or choose a CSV file</span><input type="file" id="import-file" accept=".csv,text/csv,text/plain"></label>' +
       '<div id="import-preview"></div>' +
       '<div class="actions"><button class="btn" data-action="close">Cancel</button>' +
@@ -1237,8 +1233,8 @@
     var db = load('msl.mock.db', null) || {
       products: [
         { id: 'P1', name: 'Sticker', category: 'Stickers', price: 5, active: true, stock: 50 },
-        { id: 'P2', name: 'Sticker pack (5)', category: 'Stickers', price: 20, active: true },
-        { id: 'P3', name: 'Small print 5x7', category: 'Prints', price: 15, active: true },
+        { id: 'P2', name: 'Sticker pack (5)', category: 'Stickers', price: 20, active: true, stock: 30 },
+        { id: 'P3', name: 'Small print 5x7', category: 'Prints', price: 15, active: true, stock: 20 },
         { id: 'P4', name: 'Large print 11x14', category: 'Prints', price: 40, active: true, stock: 4 },
         { id: 'P5', name: 'Collage original', category: 'Originals', price: 120, active: true, stock: 1 },
         { id: 'P6', name: 'Postcard', category: 'Paper', price: 4, active: true },

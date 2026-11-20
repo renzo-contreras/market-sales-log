@@ -13,7 +13,7 @@ Live at **https://market.renzocontreras.art** (private: password required).
 - **Sales:** every sale with time, items, total, method and receipt status. Undo right after a sale, or cancel any sale later. Cancelled sales stay visible, crossed out, and are not counted.
 - **Totals:** per day and per payment method, with the market fee and your net.
 - **Report:** a printable page (save as PDF) and a CSV with every sale, totals by method, the fee, and receipt links.
-- **Products:** add, edit, hide, or import from a pasted list or CSV. An optional **Stock** (how many you bring) shows items sold and items left on the Sell screen, the Products tab and Totals. Cancelled sales put items back.
+- **Products:** add, edit, hide, or import from a pasted list or CSV. A required **Stock** (how many you bring) shows items sold and items left on the Sell screen, the Products tab and Totals. Cancelled sales put items back.
 - **Appearance:** Menu > Appearance switches between Dark (the default), Light, or Match device. Each device remembers its own choice.
 - **Never a silent failure:** each sale saves in the background. The button at the top shows Saved, Saving, or a red "Not saved" with Retry. Unsaved sales stay on the device and retry on their own.
 

@@ -151,7 +151,7 @@ On each device:
 ### Step 11. Add your products
 
 1. Open the **Products** tab.
-2. Tap **Import list** and paste your products, one per line: `Name, Category, Price, Stock`. Stock is how many you bring, and you can leave it off. You can also choose a CSV file.
+2. Tap **Import list** and paste your products, one per line: `Name, Category, Price, Stock`. Stock is how many you bring, and it is required. You can also choose a CSV file.
 3. Check the preview, then tap **Import**.
 4. Open the Sheet: the **Products** tab now has your products. You can also add, edit or hide products in the app later, and change the stock any time.
 
