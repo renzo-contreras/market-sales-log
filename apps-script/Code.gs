@@ -106,6 +106,7 @@ var ACTIONS = {
   bootstrap: bootstrap_,
   saveProduct: saveProduct_,
   importProducts: importProducts_,
+  deleteProduct: deleteProduct_,
   addSale: addSale_,
   setVoided: setVoided_,
   setNote: setNote_
@@ -244,6 +245,18 @@ function importProducts_(payload) {
   if (!list.length) throw new Error('No products to import.');
   return withLock_(function () {
     list.forEach(function (p) { upsert_('Products', 'id', p); });
+    return { products: readRows_('Products').map(cleanProduct_) };
+  });
+}
+
+// Removes a product row. Past sales keep their own copy of the item name and price,
+// so sales history and totals are not affected.
+function deleteProduct_(payload) {
+  if (!payload.id) throw new Error('Missing product id.');
+  return withLock_(function () {
+    var found = findRow_('Products', 'id', payload.id);
+    if (!found) throw new Error('Product not found. It may already be deleted.');
+    sheet_('Products').deleteRow(found.rowIndex);
     return { products: readRows_('Products').map(cleanProduct_) };
   });
 }

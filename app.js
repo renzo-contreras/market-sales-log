@@ -821,10 +821,13 @@
         '<p class="error" id="form-error" hidden></p>' +
         '<div class="actions"><button type="button" class="btn" data-action="close">Cancel</button>' +
         '<button type="submit" class="btn btn-primary">Save</button></div>' +
+        (p ? '<button type="button" class="btn btn-danger" id="delete-product" style="width:100%;margin-top:16px">Delete product</button>' : '') +
       '</form>'
     );
     var form = document.getElementById('product-form');
     if (!p) form.name.focus();
+    var del = document.getElementById('delete-product');
+    if (del) del.addEventListener('click', function () { deleteProduct(p, del); });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var price = toCents(form.price.value);
@@ -836,6 +839,25 @@
       if (stockRaw === '' || !Number.isInteger(stock) || stock < 0) { err.textContent = 'Add the stock: how many you bring, as a whole number like 20.'; err.hidden = false; return; }
       var data = { id: p ? p.id : newId('P'), name: form.name.value.trim(), category: form.category.value.trim() || 'Other', price: price / 100, active: p ? p.active : true, stock: stock };
       saveProductNow(data, form.querySelector('[type=submit]'));
+    });
+  }
+
+  function deleteProduct(p, btn) {
+    var sold = soldById()[p.id] || 0;
+    var msg = 'Delete "' + p.name + '"? This cannot be undone.' +
+      (sold ? '\n\nIt has ' + sold + ' sold. Those sales stay in your records and totals, but its stock will no longer be tracked. To keep it but take it off the Sell screen, use Hide instead.' : '');
+    if (!confirm(msg)) return;
+    btn.disabled = true; btn.textContent = 'Deleting...';
+    api('deleteProduct', { id: p.id }).then(function (res) {
+      state.products = res.products.map(fromServerProduct);
+      persistCache();
+      closeModal();
+      render();
+      toast('Deleted ' + p.name);
+    }).catch(function (err) {
+      if (err.auth) return signOut(err.message);
+      btn.disabled = false; btn.textContent = 'Delete product';
+      toast('Not deleted: ' + err.message, { bad: true });
     });
   }
 
@@ -1277,6 +1299,12 @@
             var j = db.products.findIndex(function (x) { return x.id === p.id; });
             if (j >= 0) db.products[j] = Object.assign({}, db.products[j], p); else db.products.push(p);
           });
+          out.products = db.products;
+        }
+        if (action === 'deleteProduct') {
+          var d = db.products.findIndex(function (x) { return x.id === payload.id; });
+          if (d < 0) return reject(new Error('Product not found. It may already be deleted.'));
+          db.products.splice(d, 1);
           out.products = db.products;
         }
         if (action === 'addSale') {
