@@ -17,5 +17,5 @@ window.APP_CONFIG = {
   // Google reCAPTCHA "site key" (public, safe to share). The matching secret key
   // goes only in Apps Script Script Properties as RECAPTCHA_SECRET. See SETUP.md.
   // Leave empty to sign in without the captcha.
-  RECAPTCHA_SITE_KEY: '6LfXSSouAAAAAKrOoPg172S9yeFpT-Mabrb9WUhv'
+  RECAPTCHA_SITE_KEY: '6LffaCouAAAAAC20sk3iLFEJTTyTJ9Z-rLOFOa1Y'
 };
