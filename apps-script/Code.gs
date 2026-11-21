@@ -484,3 +484,213 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 2: payment receipts from Gmail                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * How it works:
+ * 1. Gmail filters put every payment email (Venmo, Cash App, PayPal, Chase Zelle)
+ *    under the label "market-receipts" in this account.
+ * 2. processReceipts() runs every 5 minutes (run installReceiptTrigger() once).
+ *    It reads new labeled emails, pulls out amount, sender and time, and adds a
+ *    row to the Receipts tab. Then it labels the email "market-processed".
+ * 3. Each unmatched receipt is compared with the sales: same payment method, same
+ *    total, within MATCH_WINDOW_MIN minutes, not cancelled, no receipt yet.
+ *    It only matches when exactly one sale fits, so it never guesses.
+ * 4. When it matches, it saves a PDF of the email in the "Receipts" folder (next to
+ *    this Sheet in Drive) and links it to the sale. Payments that never match a
+ *    sale (personal ones) get a row in the Receipts tab but no PDF.
+ */
+
+var RECEIPT_LABEL = 'market-receipts';
+var PROCESSED_LABEL = 'market-processed';
+var MATCH_WINDOW_MIN = 30;
+var RETRY_MATCH_HOURS = 48; // keep trying to match a receipt for this long
+
+// Run once from the editor: choose installReceiptTrigger, then Run.
+function installReceiptTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'processReceipts') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('processReceipts').timeBased().everyMinutes(5).create();
+  receiptFolder_(); // asks for Drive permission now and creates the folder if needed
+  Logger.log('Receipt checking is on. It runs every 5 minutes.');
+}
+
+// Turns receipt checking off.
+function removeReceiptTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'processReceipts') ScriptApp.deleteTrigger(t);
+  });
+  Logger.log('Receipt checking is off.');
+}
+
+function processReceipts() {
+  var processed = GmailApp.getUserLabelByName(PROCESSED_LABEL) || GmailApp.createLabel(PROCESSED_LABEL);
+  var threads = GmailApp.search('label:' + RECEIPT_LABEL + ' -label:' + PROCESSED_LABEL + ' newer_than:7d', 0, 50);
+  var known = {};
+  readRows_('Receipts').forEach(function (r) { known[String(r.email_id)] = true; });
+  var added = 0, skipped = 0;
+
+  threads.forEach(function (thread) {
+    thread.getMessages().forEach(function (msg) {
+      var id = msg.getId();
+      if (known[id]) return;
+      var parsed = parseReceipt_(msg.getFrom(), msg.getSubject(), htmlToText_(msg.getBody()));
+      if (!parsed) { skipped++; console.log('Not a received payment, skipped: ' + msg.getSubject()); return; }
+      withLock_(function () {
+        appendRow_('Receipts', {
+          email_id: id,
+          received_at: msg.getDate(),
+          amount: parsed.amount / 100,
+          method: parsed.method,
+          sender: parsed.sender,
+          pdf_link: '',
+          matched_sale_id: ''
+        });
+      });
+      known[id] = true;
+      added++;
+    });
+    thread.addLabel(processed);
+  });
+
+  var matched = matchPendingReceipts_();
+  console.log('Receipts: ' + added + ' new, ' + skipped + ' skipped, ' + matched + ' matched.');
+}
+
+// Tries to match every recent unmatched receipt. Also catches sales that were
+// entered after the payment email arrived.
+function matchPendingReceipts_() {
+  var now = Date.now();
+  var receipts = readRows_('Receipts').filter(function (r) {
+    var t = new Date(r.received_at).getTime();
+    return !r.matched_sale_id && !isNaN(t) && now - t < RETRY_MATCH_HOURS * 3600000;
+  });
+  if (!receipts.length) return 0;
+  var count = 0;
+  receipts.forEach(function (r) {
+    withLock_(function () {
+      var sales = readRows_('Sales').map(function (s, i) { s._row = i + 2; return s; });
+      var sale = findMatchingSale_(sales, {
+        method: String(r.method),
+        amount: Math.round(Number(r.amount) * 100),
+        time: new Date(r.received_at).getTime()
+      });
+      if (!sale) return;
+      var pdf = saveReceiptPdf_(String(r.email_id), r, sale);
+      var rec = findRow_('Receipts', 'email_id', String(r.email_id));
+      setCell_('Receipts', rec.rowIndex, 'pdf_link', pdf);
+      setCell_('Receipts', rec.rowIndex, 'matched_sale_id', String(sale.sale_id));
+      setCell_('Sales', sale._row, 'receipt_link', pdf);
+      setCell_('Sales', sale._row, 'status', 'matched');
+      count++;
+    });
+  });
+  return count;
+}
+
+// Pure function (no Google services) so it can be tested on its own.
+// Returns the one sale that fits, or null when none or more than one fit.
+function findMatchingSale_(sales, receipt) {
+  var fits = sales.filter(function (s) {
+    if (String(s.method) !== receipt.method) return false;
+    if (s.cancelled === true || String(s.cancelled).toUpperCase() === 'TRUE') return false;
+    if (s.receipt_link) return false;
+    if (Math.round(Number(s.total) * 100) !== receipt.amount) return false;
+    var t = new Date(s.timestamp).getTime();
+    return !isNaN(t) && Math.abs(t - receipt.time) <= MATCH_WINDOW_MIN * 60000;
+  });
+  return fits.length === 1 ? fits[0] : null;
+}
+
+/*
+ * Reads one payment email. Returns { method, amount (cents), sender } for money
+ * you received, or null for anything else (money you sent, requests, promos).
+ * Formats checked against real emails from Nov 2026: Venmo, PayPal, Chase Zelle.
+ * Cash App is a best guess until a real sample is checked.
+ */
+function parseReceipt_(from, subject, text) {
+  var f = String(from || '').toLowerCase();
+  var subj = String(subject || '').replace(/[ \s]+/g, ' ').trim();
+  var body = String(text || '').replace(/[ \t ]+/g, ' ');
+  var amt = '\\$\\s?([\\d,]+(?:\\.\\d{2})?)';
+  var m;
+
+  if (/@venmo\.com/.test(f)) {
+    // "Calvin Knutzen paid $1.00 to your Venmo account..." or "... paid your $5.00 request"
+    m = subj.match(new RegExp('^(.+?) paid (?:you |your )?' + amt, 'i'));
+    if (!m || /^you\b/i.test(m[1])) return null;
+    return { method: 'Venmo', amount: toCents_(m[2]), sender: m[1].trim() };
+  }
+
+  if (/paypal\.com/.test(f)) {
+    // "Calvin Knutzen sent you $1.00 USD"
+    m = subj.match(new RegExp('^(.+?) sent you ' + amt + '\\s*USD', 'i'));
+    if (!m) return null;
+    return { method: 'PayPal', amount: toCents_(m[2]), sender: m[1].trim() };
+  }
+
+  if (/chase\.com/.test(f)) {
+    // Subject "You received money with Zelle(R)", body "NAME sent you money ... Amount $1.00"
+    if (!/received money with zelle/i.test(subj)) return null;
+    var who = body.match(/([^\n]+?) sent you money/i);
+    var a = body.match(new RegExp('Amount\\s*' + amt, 'i'));
+    if (!a) return null;
+    return { method: 'Zelle', amount: toCents_(a[1]), sender: who ? titleCase_(who[1].trim()) : '' };
+  }
+
+  if (/square\.com|cash\.app/.test(f)) {
+    // Best guess: "Calvin Knutzen sent you $1" or "... sent you $1.00 for ..."
+    m = subj.match(new RegExp('^(.+?) sent you ' + amt, 'i'));
+    if (!m || /^you\b/i.test(m[1])) return null;
+    return { method: 'Cash App', amount: toCents_(m[2]), sender: m[1].trim() };
+  }
+
+  return null;
+}
+
+function titleCase_(s) {
+  return s.toLowerCase().replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+}
+
+// Rough HTML to plain text, enough to read amounts and names.
+function htmlToText_(html) {
+  return String(html || '')
+    .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>|<\/(p|div|tr|td|h\d|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&reg;/gi, '®')
+    .replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(Number(n)); })
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n');
+}
+
+// The "Receipts" folder next to this Sheet in Drive (created if missing).
+function receiptFolder_() {
+  var parents = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getParents();
+  var parent = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var found = parent.getFoldersByName('Receipts');
+  return found.hasNext() ? found.next() : parent.createFolder('Receipts');
+}
+
+// Saves the email as a PDF named like "2026-12-06 1412 Venmo $25.00 Jane Doe S-123.pdf".
+function saveReceiptPdf_(emailId, receipt, sale) {
+  var msg = GmailApp.getMessageById(emailId);
+  var when = Utilities.formatDate(msg.getDate(), TIMEZONE, 'yyyy-MM-dd HHmm');
+  var header = '<div style="font:13px Arial;border-bottom:1px solid #ccc;padding:8px 0;margin-bottom:12px">' +
+    '<b>From:</b> ' + escHtml_(msg.getFrom()) + '<br><b>To:</b> ' + escHtml_(msg.getTo()) +
+    '<br><b>Date:</b> ' + escHtml_(Utilities.formatDate(msg.getDate(), TIMEZONE, 'MMM d, yyyy h:mm a')) + ' (Mountain Time)' +
+    '<br><b>Subject:</b> ' + escHtml_(msg.getSubject()) +
+    '<br><b>Matched sale:</b> ' + escHtml_(String(sale.sale_id)) + '</div>';
+  var name = when + ' ' + receipt.method + ' ' + money_(Math.round(Number(receipt.amount) * 100)) + ' ' +
+    String(receipt.sender || '').replace(/[\\\/:*?"<>|]/g, '') + ' ' + sale.sale_id;
+  var pdf = Utilities.newBlob(header + msg.getBody(), 'text/html', name + '.html').getAs('application/pdf').setName(name + '.pdf');
+  return receiptFolder_().createFile(pdf).getUrl();
+}
+
+function escHtml_(s) {
+  return String(s || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+}
