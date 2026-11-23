@@ -464,10 +464,13 @@ html, body { overflow: hidden; }
 .disc-row .seg { margin: 0; min-width: 160px; }
 .disc-preview { font-size: 14px; min-height: 1em; }
 
-/* Category colors: a colored edge and label on each Sell tile, a dot on the filter chips
+/* Category colors: a colored label (tinted background) on each Sell tile, a dot on the filter chips
    and on the Products tab group titles. The label also names the category, so it does not rely on color alone. */
-.product[style*="--cat"] { border-left: 6px solid var(--cat); padding-left: 10px; }
 .product .p-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.p-cat { font-size: 12px; font-weight: 700; color: var(--cat); text-transform: uppercase; letter-spacing: .04em; }
+.p-cat {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 8px; border-radius: 999px;
+  color: var(--cat); background: color-mix(in srgb, var(--cat) 18%, transparent);
+}
 .cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--cat); margin-right: 7px; vertical-align: 0; }
 .chip.active .cat-dot { box-shadow: 0 0 0 2px var(--accent-text); }
