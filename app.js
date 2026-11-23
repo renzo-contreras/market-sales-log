@@ -434,6 +434,12 @@
   }
 
   function activeProducts() { return state.products.filter(function (p) { return p.active; }); }
+  // Each category gets one of 8 colors, in the order categories first appear in the product list.
+  function catStyle(cat) {
+    var i = categories(state.products).indexOf(cat);
+    return i < 0 ? '' : '--cat: var(--cat-' + (i % 8 + 1) + ')';
+  }
+  function catDot(cat) { var st = catStyle(cat); return st ? '<span class="cat-dot" style="' + st + '" aria-hidden="true"></span>' : ''; }
   function categories(list) {
     var seen = [];
     list.forEach(function (p) { if (seen.indexOf(p.category) === -1) seen.push(p.category); });
@@ -459,7 +465,7 @@
     state.cart.lines.forEach(function (l) { if (l.productId) qtyById[l.productId] = (qtyById[l.productId] || 0) + l.qty; });
 
     var chips = cats.length > 1 ? '<div class="chips">' + ['All'].concat(cats).map(function (c) {
-      return '<button class="chip' + (c === state.category ? ' active' : '') + '" data-action="category" data-value="' + esc(c) + '">' + esc(c) + '</button>';
+      return '<button class="chip' + (c === state.category ? ' active' : '') + '" data-action="category" data-value="' + esc(c) + '">' + (c === 'All' ? '' : catDot(c)) + esc(c) + '</button>';
     }).join('') + '</div>' : '';
 
     var grid;
@@ -474,9 +480,10 @@
         var showLeft = left != null && (left <= 3 || left <= p.stock * 0.25);
         var stockTag = !showLeft ? '' : (left <= 0 ? '<span class="p-stock out">' + (left < 0 ? 'Over stock by ' + (-left) : 'Sold out') + '</span>'
           : '<span class="p-stock' + (left <= 3 ? ' low' : '') + '">' + left + ' left</span>');
-        return '<button class="product' + (q ? ' in-cart' : '') + (left != null && left <= 0 ? ' sold-out' : '') + '" data-action="add" data-id="' + esc(p.id) + '">' +
+        return '<button class="product' + (q ? ' in-cart' : '') + (left != null && left <= 0 ? ' sold-out' : '') + '" style="' + catStyle(p.category) + '" data-action="add" data-id="' + esc(p.id) + '">' +
           (q ? '<span class="qty">' + q + '</span>' : '') +
-          (p.discount ? '<span class="p-off">' + esc(discountText(p.discount)) + '</span>' : '') +
+          '<span class="p-top"><span class="p-cat">' + esc(p.category) + '</span>' +
+          (p.discount ? '<span class="p-off">' + esc(discountText(p.discount)) + '</span>' : '') + '</span>' +
           '<span class="p-name">' + esc(p.name) + '</span><span class="p-foot"><span class="p-price num">' +
           (p.discount ? '<span class="p-sale">' + money(salePrice(p)) + '</span> <s>' + money(p.price) + '</s>' : money(p.price)) +
           '</span>' + stockTag + '</span></button>';
@@ -808,7 +815,7 @@
     var active = state.products.filter(function (p) { return p.active; });
     var hidden = state.products.filter(function (p) { return !p.active; });
     var groups = categories(active).map(function (c) {
-      return '<div class="group-title">' + esc(c) + '</div><div class="list">' +
+      return '<div class="group-title">' + catDot(c) + esc(c) + '</div><div class="list">' +
         active.filter(function (p) { return p.category === c; }).map(productRow).join('') + '</div>';
     }).join('');
     return '<div class="btn-row" style="margin-bottom:8px">' +

@@ -16,6 +16,9 @@
   --confirm: #1f7a4d;
   --toast-ok: #1f7a4d;
   --toast-bad: #b3261e;
+  /* Category colors, given out in order: 1st category gets cat-1, and so on. */
+  --cat-1: #c2410c; --cat-2: #1d4ed8; --cat-3: #a21caf; --cat-4: #0e7490;
+  --cat-5: #b45309; --cat-6: #6d28d9; --cat-7: #be123c; --cat-8: #4d7c0f;
   --radius: 14px;
   --tap: 56px;
   --nav-h: 64px;
@@ -43,6 +46,8 @@
   --warn-bg: #3a2c12;
   --bad: #ff8a80;
   --bad-bg: #3d1a17;
+  --cat-1: #fb923c; --cat-2: #60a5fa; --cat-3: #e879f9; --cat-4: #22d3ee;
+  --cat-5: #fbbf24; --cat-6: #a78bfa; --cat-7: #fb7185; --cat-8: #a3e635;
   color-scheme: dark;
 }
 
@@ -62,6 +67,8 @@
     --warn-bg: #3a2c12;
     --bad: #ff8a80;
     --bad-bg: #3d1a17;
+    --cat-1: #fb923c; --cat-2: #60a5fa; --cat-3: #e879f9; --cat-4: #22d3ee;
+    --cat-5: #fbbf24; --cat-6: #a78bfa; --cat-7: #fb7185; --cat-8: #a3e635;
     color-scheme: dark;
   }
 }
@@ -456,3 +463,11 @@ html, body { overflow: hidden; }
 .disc-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
 .disc-row .seg { margin: 0; min-width: 160px; }
 .disc-preview { font-size: 14px; min-height: 1em; }
+
+/* Category colors: a colored edge and label on each Sell tile, a dot on the filter chips
+   and on the Products tab group titles. The label also names the category, so it does not rely on color alone. */
+.product[style*="--cat"] { border-left: 6px solid var(--cat); padding-left: 10px; }
+.product .p-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.p-cat { font-size: 12px; font-weight: 700; color: var(--cat); text-transform: uppercase; letter-spacing: .04em; }
+.cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--cat); margin-right: 7px; vertical-align: 0; }
+.chip.active .cat-dot { box-shadow: 0 0 0 2px var(--accent-text); }
