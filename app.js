@@ -1032,7 +1032,8 @@
     modal.hidden = false;
   }
   function closeModal() { modal.hidden = true; modal.innerHTML = ''; }
-  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+  // Tapping outside a popup does not close it (selecting text could end outside and lose changes).
+  // Every popup closes only with its own Cancel or Close button.
 
   function promptMoney(title, current, onSave, extraHtml) {
     openModal(
