@@ -106,7 +106,23 @@
 
   function fromServerProduct(p) {
     return { id: p.id, name: p.name, category: p.category || 'Other', price: Math.round(Number(p.price) * 100) || 0, active: p.active !== false,
-      stock: (p.stock === '' || p.stock == null || isNaN(Number(p.stock))) ? null : Number(p.stock) };
+      stock: (p.stock === '' || p.stock == null || isNaN(Number(p.stock))) ? null : Number(p.stock),
+      discount: parseDiscount(p.discount) };
+  }
+  // Product discount from the server: "20% off" or "$5.00 off" -> {type, value}; value is a percent or cents.
+  function parseDiscount(v) {
+    var s = String(v == null ? '' : v).toLowerCase().replace(/off|[$,\s]/g, '');
+    if (!s) return null;
+    var pct = /%$/.test(s), n = Number(s.replace('%', ''));
+    if (isNaN(n) || n <= 0) return null;
+    return pct ? { type: 'percent', value: Math.min(100, n) } : { type: 'amount', value: Math.round(n * 100) };
+  }
+  function discountText(d) { return !d ? '' : (d.type === 'percent' ? d.value + '% off' : money(d.value) + ' off'); }
+  // The price a customer pays for a product, after its own discount (in cents).
+  function salePrice(p) {
+    var d = p.discount;
+    if (!d) return p.price;
+    return d.type === 'percent' ? Math.round(p.price * (100 - d.value) / 100) : Math.max(0, p.price - d.value);
   }
   function fromServerSale(s) {
     return {
@@ -460,7 +476,10 @@
           : '<span class="p-stock' + (left <= 3 ? ' low' : '') + '">' + left + ' left</span>');
         return '<button class="product' + (q ? ' in-cart' : '') + (left != null && left <= 0 ? ' sold-out' : '') + '" data-action="add" data-id="' + esc(p.id) + '">' +
           (q ? '<span class="qty">' + q + '</span>' : '') +
-          '<span class="p-name">' + esc(p.name) + '</span><span class="p-foot"><span class="p-price num">' + money(p.price) + '</span>' + stockTag + '</span></button>';
+          (p.discount ? '<span class="p-off">' + esc(discountText(p.discount)) + '</span>' : '') +
+          '<span class="p-name">' + esc(p.name) + '</span><span class="p-foot"><span class="p-price num">' +
+          (p.discount ? '<span class="p-sale">' + money(salePrice(p)) + '</span> <s>' + money(p.price) + '</s>' : money(p.price)) +
+          '</span>' + stockTag + '</span></button>';
       }).join('') +
       '<button class="product custom" data-action="custom"><span class="p-name">+ Custom item</span><span class="p-price">Any amount</span></button>' +
       '</div>';
@@ -515,9 +534,10 @@
   }
 
   function addToCart(p) {
-    var line = state.cart.lines.find(function (l) { return l.productId === p.id && l.price === p.price; });
+    var price = salePrice(p);
+    var line = state.cart.lines.find(function (l) { return l.productId === p.id && l.price === price; });
     if (line) line.qty += 1;
-    else state.cart.lines.push({ productId: p.id, name: p.name, price: p.price, basePrice: p.price, qty: 1 });
+    else state.cart.lines.push({ productId: p.id, name: p.name, price: price, basePrice: p.price, qty: 1 });
     persistCart();
     render();
   }
@@ -802,7 +822,7 @@
   function productRowHtml(p, sold) {
     var stock = p.stock == null ? ' · <span class="stock-out">Stock missing, tap Edit</span>' : ' · <span class="' + (p.stock - sold <= 0 ? 'stock-out' : '') + '">' + (p.stock - sold) + ' left of ' + p.stock + '</span>';
     return '<div class="prow' + (p.active ? '' : ' hidden-p') + '"><div><div><strong>' + esc(p.name) + '</strong></div>' +
-      '<div class="p-meta num">' + money(p.price) + ' · ' + sold + ' sold' + stock + (p.active ? '' : ' · ' + esc(p.category)) + '</div></div>' +
+      '<div class="p-meta num">' + (p.discount ? '<s>' + money(p.price) + '</s> <span class="p-sale">' + money(salePrice(p)) + ' (' + esc(discountText(p.discount)) + ')</span>' : money(p.price)) + ' · ' + sold + ' sold' + stock + (p.active ? '' : ' · ' + esc(p.category)) + '</div></div>' +
       '<button class="btn" data-action="edit-product" data-id="' + esc(p.id) + '">Edit</button>' +
       '<button class="btn" data-action="toggle-product" data-id="' + esc(p.id) + '">' + (p.active ? 'Hide' : 'Show') + '</button></div>';
   }
@@ -818,6 +838,12 @@
         '<label class="field"><span>Price ($)</span><input name="price" inputmode="decimal" required value="' + (p ? (p.price / 100).toFixed(2) : '') + '"></label>' +
         '<label class="field"><span>Stock (how many you bring)</span><input name="stock" inputmode="numeric" required value="' + (p && p.stock != null ? p.stock : '') + '" placeholder="For example, 20"></label>' +
         '<p class="muted" style="margin:-6px 0 14px;font-size:14px">Items sold and items left are counted from your sales. Cancelled sales put items back.</p>' +
+        '<div class="field"><span>Discount (optional)</span><div class="disc-row">' +
+          '<input name="discount" inputmode="decimal" autocomplete="off" placeholder="None" value="' + (p && p.discount ? (p.discount.type === 'percent' ? p.discount.value : (p.discount.value / 100).toFixed(2)) : '') + '">' +
+          '<div class="seg" role="group" aria-label="Discount type">' +
+            '<button type="button" data-dtype="percent" class="' + (!p || !p.discount || p.discount.type === 'percent' ? 'active' : '') + '">% off</button>' +
+            '<button type="button" data-dtype="amount" class="' + (p && p.discount && p.discount.type === 'amount' ? 'active' : '') + '">$ off</button>' +
+          '</div></div><div class="disc-preview muted" id="disc-preview"></div></div>' +
         '<p class="error" id="form-error" hidden></p>' +
         '<div class="actions"><button type="button" class="btn" data-action="close">Cancel</button>' +
         '<button type="submit" class="btn btn-primary">Save</button></div>' +
@@ -826,6 +852,29 @@
     );
     var form = document.getElementById('product-form');
     if (!p) form.name.focus();
+    var dtype = (p && p.discount && p.discount.type) || 'percent';
+    var readDiscount = function () {
+      var raw = form.discount.value.trim().replace(/[$%\s]/g, '');
+      if (raw === '' || Number(raw) === 0) return { ok: true, d: null };
+      var n = Number(raw);
+      if (isNaN(n) || n < 0 || (dtype === 'percent' && n > 100)) return { ok: false };
+      return { ok: true, d: dtype === 'percent' ? { type: 'percent', value: n } : { type: 'amount', value: Math.round(n * 100) } };
+    };
+    var updatePreview = function () {
+      var price = toCents(form.price.value), r = readDiscount(), el = document.getElementById('disc-preview');
+      if (!r.ok) { el.textContent = dtype === 'percent' ? 'Use a number from 1 to 100.' : 'Use an amount like 5 or 2.50.'; return; }
+      el.textContent = r.d && !isNaN(price) ? 'Sells for ' + money(salePrice({ price: price, discount: r.d })) + ' instead of ' + money(price) + '. Leave empty for no discount.' : '';
+    };
+    form.querySelectorAll('[data-dtype]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        dtype = b.dataset.dtype;
+        form.querySelectorAll('[data-dtype]').forEach(function (x) { x.classList.toggle('active', x === b); });
+        updatePreview();
+      });
+    });
+    form.discount.addEventListener('input', updatePreview);
+    form.price.addEventListener('input', updatePreview);
+    updatePreview();
     var del = document.getElementById('delete-product');
     if (del) del.addEventListener('click', function () { deleteProduct(p, del); });
     form.addEventListener('submit', function (e) {
@@ -837,7 +886,10 @@
       var stockRaw = form.stock.value.trim();
       var stock = Number(stockRaw);
       if (stockRaw === '' || !Number.isInteger(stock) || stock < 0) { err.textContent = 'Add the stock: how many you bring, as a whole number like 20.'; err.hidden = false; return; }
-      var data = { id: p ? p.id : newId('P'), name: form.name.value.trim(), category: form.category.value.trim() || 'Other', price: price / 100, active: p ? p.active : true, stock: stock };
+      var disc = readDiscount();
+      if (!disc.ok) { err.textContent = dtype === 'percent' ? 'Discount must be a percent from 1 to 100, or leave it empty.' : 'Discount must be an amount like 5, or leave it empty.'; err.hidden = false; return; }
+      var data = { id: p ? p.id : newId('P'), name: form.name.value.trim(), category: form.category.value.trim() || 'Other', price: price / 100, active: p ? p.active : true, stock: stock,
+        discount: disc.d ? (disc.d.type === 'percent' ? disc.d.value + '% off' : money(disc.d.value) + ' off') : '' };
       saveProductNow(data, form.querySelector('[type=submit]'));
     });
   }

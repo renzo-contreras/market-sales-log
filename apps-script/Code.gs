@@ -17,7 +17,7 @@ var TIMEZONE = 'America/Denver';
 var MIN_PASSWORD_LENGTH = 12;
 
 var SHEETS = {
-  Products: ['id', 'name', 'category', 'price', 'active', 'stock'],
+  Products: ['id', 'name', 'category', 'price', 'active', 'stock', 'discount'],
   Sales: ['sale_id', 'timestamp', 'items', 'total', 'method', 'device', 'status',
           'receipt_link', 'note', 'cancelled', 'subtotal', 'discount', 'items_json'],
   Receipts: ['email_id', 'received_at', 'amount', 'method', 'sender', 'pdf_link',
@@ -343,8 +343,26 @@ function validateProduct_(p) {
     price: price / 100,
     active: p.active === false || p.active === 'FALSE' ? false : true,
     // Left out (undefined) when the request did not include stock, so an existing value is kept.
-    stock: p.stock === undefined ? undefined : cleanStock_(p.stock)
+    stock: p.stock === undefined ? undefined : cleanStock_(p.stock),
+    // Left out when not sent (for example by Import list), so an existing discount is kept.
+    discount: p.discount === undefined ? undefined : cleanDiscount_(p.discount)
   };
+}
+
+// Product discount, stored as readable text so Sheets does not turn it into a number:
+// "20% off" (percent) or "$5.00 off" (dollars), or blank for none.
+// Accepts "20%", "20% off", "5", "$5", "$5.00 off".
+// lenient = true when reading the sheet: a typo there shows as no discount instead of breaking the app.
+function cleanDiscount_(v, lenient) {
+  var s = String(v === null || v === undefined ? '' : v).toLowerCase().replace(/off|[$,\s]/g, '');
+  if (s === '' || s === '0' || s === '0%') return '';
+  var pct = /%$/.test(s);
+  var n = Number(s.replace('%', ''));
+  if (isNaN(n) || n < 0 || (pct && n > 100)) {
+    if (lenient) return '';
+    throw new Error('Discount must be a percent like 20% or an amount like 5.');
+  }
+  return pct ? (Math.round(n * 100) / 100) + '% off' : '$' + n.toFixed(2) + ' off';
 }
 
 function cleanProduct_(r) {
@@ -354,7 +372,8 @@ function cleanProduct_(r) {
     category: String(r.category || 'Other'),
     price: Number(r.price) || 0,
     active: !(r.active === false || String(r.active).toUpperCase() === 'FALSE'),
-    stock: cleanStock_(r.stock, true)
+    stock: cleanStock_(r.stock, true),
+    discount: cleanDiscount_(r.discount, true)
   };
 }
 

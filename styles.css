@@ -445,3 +445,14 @@ html, body { overflow: hidden; }
 @media (display-mode: standalone), (display-mode: fullscreen) {
   :root { --safe-t: env(safe-area-inset-top, 0px); }
 }
+
+/* Product discount */
+.product .p-off {
+  font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--ok-bg); color: var(--ok);
+}
+.product .p-price s, .p-meta s { font-weight: 400; opacity: .7; }
+.p-sale { color: var(--ok); font-weight: 700; }
+.disc-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.disc-row .seg { margin: 0; min-width: 160px; }
+.disc-preview { font-size: 14px; min-height: 1em; }
